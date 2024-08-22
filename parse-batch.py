@@ -1,9 +1,15 @@
 import rlp
 import sys
 import json
+from Crypto.Hash import keccak
 
 if len(sys.argv) != 3:
     print('Usage: python parse-batch.py <input_hex_file> <output_json_file>')
+
+CHAIN_ID = 1101
+
+def change_v(v: bytes) -> int:
+    return int.from_bytes(v, 'big') - 27 + CHAIN_ID * 2 + 35
 
 if __name__ == '__main__':
     inputfile, outputfile = sys.argv[1], sys.argv[2]
@@ -64,6 +70,8 @@ if __name__ == '__main__':
             tx = rlp.decode(batch[idx:idx + total_length])
             idx += total_length
             r, s, v, effectivePercentage = batch[idx:idx+32], batch[idx+32:idx+64], batch[idx+64:idx+65], batch[idx+65]
+            signed_tx_raw = rlp.encode(tx[:6] + [change_v(v), r, s])
+            signed_tx_hash = keccak.new(digest_bits=256).update(signed_tx_raw).digest()
             idx += 66
             d = {}
             # rlp(nonce, gasprice, gaslimit, to, value, data, chainId, 0, 0)
@@ -75,8 +83,9 @@ if __name__ == '__main__':
             d['data'] = '0x' + tx[5].hex()
             if len(tx) == 9:
                 d['chainId'] = int.from_bytes(tx[6], 'big')
-            # d['from']
             tx = {
+                'hash': '0x' + signed_tx_hash.hex(),
+                'raw': '0x' + signed_tx_raw.hex(),
                 'payload': d,
                 'signature': {
                     'r': '0x' + r.hex(),
